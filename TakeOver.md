@@ -59,7 +59,7 @@ feature:installコマンドを実行することで、ODLの各モジュール�
 >feature:list
 
 オプションの"-i"を付けるとインストール済の一覧が見れる
-feature:listにはリポジトリに登録されているfeatureが表示される
+feature:listにはリポジトリに登録されているfeaturesが表示される
 登録されているリポジトリは以下のコマンドで確認可能
 >feature:repo-list
 
@@ -69,13 +69,13 @@ feature:listにはリポジトリに登録されているfeatureが表示され�
 >:
 
 左側はfeatures名、右側はfeaturesのmvnパスが表示される
-{KARAF_HOME}/system/org/opendaylight/netvirt/feature-netvirt/1.2.3-Beryllium-SR2/xml/features
+この例だと、{KARAF_HOME}/system/org/opendaylight/netvirt/feature-netvirt/1.2.3-Beryllium-SR2/xml/features
 配下にxmlファイルがあり、featuresの設定が記載されている
 xmlの中身には以下のようなパラメータが記載されている
->featuresタグ - ODLに登録するfeatures;name属性に指定した名前がfeature:repo-listの左側の名前が表示
+>featuresタグ - ODLに登録するfeatures。name属性に指定した名前がfeature:repo-listの左側の名前が表示
 >repositoryタグ - 依存関係のあるリポジトリ
->featureタグ - osgiのfeature設定;nameに指定した名前がfeature:listに表示される
->featureタグ - featureタグの中にあるfeatureは依存関係のあるfeatureを指定;同時にfeature:installされる
+>featureタグ - osgiのfeature設定。nameに指定した名前がfeature:listに表示される
+>featureタグ - featureタグの中にあるfeatureは依存関係のあるfeatureを指定。同時にfeature:installされる
 >bundleタグ - featureインストール時にインストールされるモジュール(jar)
 >configfileタグ - featureで使用するコンフィグファイル
 
@@ -84,6 +84,8 @@ karafのfeature:install(厳密にはbundle:install)時に参照するリポジ�
 >**{KARAF_HOME}/etc/org.ops4j.pax.url.mvn.cfg**
 > 
 >ODLでは{KARAF_HOME}/systemディレクトリをデフォルトリポジトリとして設定し、このディレクトリ内でモジュールが見つからない場合はセントラルリポジトリに検索しにいっている
+
+>feature:installでは関連するモジュールを一括でbundle:installしている。ODL関連のモジュールはfeaturesに登録して、feature:installでモジュールを一括インストールしているが、jolokiaのようなODLに関連していないモジュールはfeaturesに登録していないので、bundle:installコマンドで直接jarをインストールしている
 
 ####**3.3. よく使うコマンド**
 指定したfeatureの依存関係やインストールされるバンドル(モジュール)情報を表示(xmlの中身を簡素にしたものが表示される)
@@ -200,41 +202,69 @@ Q1. ODLのmainはどこでどのような流れで各種featureが起動され�
 >etc/opendaylight/karafフォルダ配下にある各アプリケーションが使用するxmlファイルの先頭の数字が若い順に初期化処理を行うようにしています。
  
 Q2. ODL起動時の初期化の流れは？
- >A. OSGIの仕様として、モジュールがインストールされた時の初期化処理としてorg.osgi.framework.BundleActivatorインタフェースのstart()メソッドが実行されます。ODLではモジュールごとにこのインタフェースを実装したクラスが存在し(存在しないものもある)、start()メソッドを実装することで初期化を行っています。Q1の回答でも記載しましたが、これらの処理はbundleの起動順で処理されるので、依存関係がある場合は起動順によっては正常に動作しない可能性があります。そのため、独自の初期化処理も実装しているようです。細かいロジックまではソースを追ってないので分かりません。
+ >A. OSGIの仕様として、モジュールがインストールされた時の初期化処理としてorg.osgi.framework.BundleActivatorインタフェースのstart()メソッドが実行されます。ODLではモジュールごとにこのインタフェースを実装したクラスが存在し、start()メソッドを実装することで初期化を行っています。Q1の回答でも記載しましたが、これらの処理はbundleの起動順で処理されるので、依存関係がある場合は起動順によっては正常に動作しない可能性があります。そのため、独自の初期化処理も実装しているようです。細かいロジックまではソースを追ってないので分かりません。
+ >追記：初期化について、プロジェクトによってはblueprint(OSGI用DIフレームワーク)を使っている場合があります。その場合、初期処理時に呼び出されるメソッドはblueprintで定義されたxmlファイルのinit-method属性で定義されます。
+netvirtの場合は以下のような記述があります。
+ ```
+ <bean id="netvirtProviders"
+    class="org.opendaylight.netvirt.openstack.netvirt.providers.NetvirtProvidersProvider"
+    init-method="start" destroy-method="close">
+    <argument ref="dataBroker" />
+    <argument ref="entityOwnershipService" />
+    <argument ref="notificationService" />
+    <argument ref="packetProcessingService" />
+    <argument ref="salFlowService" />
+    <argument value="0" />
+  </bean>
+```
 
 Q3. featureの起動方法(スレッド/プロセス)は？数は？
->A. featureはインストール時に自動で起動します。プロセスはjava１つのみでfeatureごとにスレッドが複数作成されて動作します
+>A. featureはインストール時に自動で起動します。プロセスはjava１つのみでfeatureごとにスレッドが複数作成されて動作します。スレッド数についてはモジュールによっては設定ファイル(etc/opendaylight配下)で制限をかけれるものもあるようです。
 
 Q4. 各種処理時の流れは？(ポイントはopenstack, openstack db, odl, odl db)
 
-Q5. 欲しいプロジェクトの情報
+Q5. プロジェクトの情報
 
->A.
+>A.主要なディレクトリのみ
 >**neutron**
 /neutron
 　├─northbound-api 
 　│　　　OpenStackからのリクエストを受け付けるREST APIインタフェース
 　│　　　REST APIはjerseyライブラリを使って実装
-　│　　　実処理は同プロジェクト内のneutron-spiで行う
-　├─
-└─
-　netvirt, controller, mdsal, ovsdb,openflowplugin, openflowjava 
+　│　　　実処理は同プロジェクト内のtranscriberで行う
+　├─neutron-spi
+　｜　　　transcriberで公開しているOSGIサービスをnorthbound-apiに提供するためのユーティリティ
+　├─model
+　│　　　MD-SAL用のyangデータを定義
+　└─transcriber
+　　　　　MD-SALデータストアへのR/Wを行う
+　　　　　OSGIのサービスバンドルとして提供されている(バンドル間は直接関数呼び出しできないため)
+　　　　　
+>**netvirt**　
+/netvirt
+　├─openstack
+　│　　├─net-virt-providers
+　│　　│　　netvirtのOSGIサービスを登録、公開
+　│　　├─net-virt
+　│　　│　　openstackのネットワークを実装
+　│　　└─ovsdb-ui
+　│　　　　　netvirt用dlux拡張モジュール
+　│　　　　　dluxにovsdb用の画面を追加できる
+　└─vpnservice
 
-Q6. 調査した関数のまとめ 
+>**ovsdb**
+>**openflowplugin**
 
-OSVDB
+Q6. 知っているfeatureについて利用方法や使い方等 
 
-Netvirt
- 
-Neutron
+>A. OpenStack連携ではまず関係ないですし、Lithium時点までしか情報はありません
+・SNMP4SDN
+SNMPを使ってL2スイッチのVLAN情報やMACアドレステーブルを書き換えることができるfeature
+インタフェースとしてはkarafコマンドとRESTをサポート
+当時はVLAN情報をREST経由で更新して通信経路を変更するといったPoCを作成しました。問題点として、対応するL2スイッチが圧倒的に少なく、実用性はないという結論に達しました。SNMPを使うのでVLAN情報やMACアドレス関連の標準MIBをサポートする必要があるのですが、このMIBを持っていない、または書き込み権がないスイッチが多かったです。Ciscoスイッチは全滅(関連するMIBは全て拡張MIBとして独自に定義していたため)
+NECはQXのみ対応。
 
-controller
-
-
-
-Q7. 知っているfeatureについて利用方法や使い方等 
-
-Q8. YANGについて
+Q7. YANGについて
 >A. 以前展開した安田さんの資料が一番分かりやすいです。私もソース読むときは必ずこの資料を見ながら読んでいます。逆にこれ以上のことは分かりません。
  \\ibkfs15.nsl.ad.nec.co.jp\a03161-01\21.入手資料\20160419_MD-SAL資料\ODLUG-Tokyo-1-1-MD-SAL.pdf
  
